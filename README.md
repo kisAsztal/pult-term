@@ -22,7 +22,11 @@ The light theme follows the system setting:
 
 ![Light theme](docs/pult-term/light.png)
 
-*The sessions in these screenshots are made-up demo data.*
+## Everything is on `F1`
+
+You do not have to learn any keys. `F1` opens a searchable list of everything you need: sessions on every machine, jump to
+the tab that waits for you, Claude in this tab, a new session on any host, close or stop a tab, full screen, search, paste.
+Type to filter, `Enter` runs the entry. (The bindings come with the [pult](https://github.com/kisAsztal/pult) config.)
 
 ## What it adds to WezTerm
 
