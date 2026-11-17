@@ -9,7 +9,7 @@ fn main() {
         let profile = std::env::var("PROFILE").unwrap();
         let repo_dir = std::env::current_dir()
             .ok()
-            .and_then(|cwd| cwd.parent().map(|p| p.to_path_buf()))
+            .and_then(|cwd| cwd.ancestors().nth(2).map(|p| p.to_path_buf()))
             .unwrap();
         let exe_output_dir = repo_dir.join("target").join(profile);
         let windows_dir = repo_dir.join("assets").join("windows");
@@ -96,7 +96,7 @@ fn main() {
 
         let rcfile_name = Path::new(&std::env::var_os("OUT_DIR").unwrap()).join("resource.rc");
         let mut rcfile = std::fs::File::create(&rcfile_name).unwrap();
-        println!("cargo:rerun-if-changed=../assets/windows/terminal.ico");
+        println!("cargo:rerun-if-changed=../../assets/windows/terminal.ico");
         write!(
             rcfile,
             r#"
@@ -157,7 +157,7 @@ END
         let profile = std::env::var("PROFILE").unwrap();
         let repo_dir = std::env::current_dir()
             .ok()
-            .and_then(|cwd| cwd.parent().map(|p| p.to_path_buf()))
+            .and_then(|cwd| cwd.ancestors().nth(2).map(|p| p.to_path_buf()))
             .unwrap();
 
         // We need to copy the plist to avoid the UNUserNotificationCenter asserting

@@ -8,10 +8,10 @@ dhat-heap.json
 /wezterm*.tar.xz
 /pkg
 /target/
-/wezterm-char-props/codegen/target
-/wezterm-char-props/codegen/Cargo.lock
-/termwiz/codegen/target
-/termwiz/codegen/Cargo.lock
+/crates/wezterm-char-props/codegen/target
+/crates/wezterm-char-props/codegen/Cargo.lock
+/crates/termwiz/codegen/target
+/crates/termwiz/codegen/Cargo.lock
 /gh_pages/
 /.cache/
 **/*.rs.bk

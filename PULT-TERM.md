@@ -7,13 +7,13 @@ documentation applies to everything else. The fork follows upstream `main`: `git
 
 | Feature | Where | Notes |
 |---------|-------|-------|
-| Status stripe on tabs | `wezterm-gui/src/termwindow/render/fancy_tab_bar.rs` (`pult_accent`) | A tab title starting with `▎` is the stripe: the fork removes the character and draws a 3 px stripe in its colour on top of a square tab. Stock WezTerm shows the same title as a left stripe. |
+| Status stripe on tabs | `crates/wezterm-gui/src/termwindow/render/fancy_tab_bar.rs` (`pult_accent`) | A tab title starting with `▎` is the stripe: the fork removes the character and draws a 3 px stripe in its colour on top of a square tab. Stock WezTerm shows the same title as a left stripe. |
 | Native tab animation | same file (`pult_animate`) | A braille character in a title is replaced by spinner frames (10/s). A title `A \u{e000} B` pulses: A and B are the same label in the colours of the two ends of the pulse (sine, 1.6 s, ~30 frames/s). Runs only while such a tab exists, also in an unfocused window (half as often). `window.pult_tab_anim` tells Lua that it is available. |
 | Status colour fade | same file (`pult_fade`) | The tab background and stripe fade into the new colour over ~220 ms. A title containing `\u{e001}` flashes once on change (done / failed). |
-| Floating pickers | `wezterm-gui/src/termwindow/pultselector.rs` | Every `InputSelector` with an `action_callback` becomes a floating panel under the tab bar. Same event back to Lua. Typing filters; ↑↓ / Ctrl+P/N, PgUp/PgDn, Enter, Esc; in a non-fuzzy list 1–9 select. Colours: `command_palette_bg_color` / `_fg_color`. No mouse support yet. |
-| Notifications with buttons | `wezterm-toast-notification/src/pult.rs`, `wezterm-gui/src/termwindow/pult.rs` | Linux (D-Bus) only; macOS and Windows get a plain notification. |
-| Raise on click (Wayland) | `window/src/os/wayland/` | `WindowOps::activate_with_token` with xdg-activation. GNOME 46 does not send the token; the window is then focused plainly. |
-| Update check off by default | `config/src/config.rs` | The upstream check looks at the WezTerm releases. |
+| Floating pickers | `crates/wezterm-gui/src/termwindow/pultselector.rs` | Every `InputSelector` with an `action_callback` becomes a floating panel under the tab bar. Same event back to Lua. Typing filters; ↑↓ / Ctrl+P/N, PgUp/PgDn, Enter, Esc; in a non-fuzzy list 1–9 select. Colours: `command_palette_bg_color` / `_fg_color`. No mouse support yet. |
+| Notifications with buttons | `crates/wezterm-toast-notification/src/pult.rs`, `crates/wezterm-gui/src/termwindow/pult.rs` | Linux (D-Bus) only; macOS and Windows get a plain notification. |
+| Raise on click (Wayland) | `crates/window/src/os/wayland/` | `WindowOps::activate_with_token` with xdg-activation. GNOME 46 does not send the token; the window is then focused plainly. |
+| Update check off by default | `crates/config/src/config.rs` | The upstream check looks at the WezTerm releases. |
 | Release profile | `Cargo.toml` | `strip` + thin LTO: a smaller binary, a somewhat longer build. |
 
 Changes to upstream code are kept small, and marked with a `pult:` comment where they sit inside upstream functions.
@@ -57,8 +57,10 @@ To try it without disturbing running windows, start a separate instance with its
 git fetch upstream && git merge upstream/main
 ```
 
-Upstream's `.github` directory is removed in this fork (its workflows are heavy and its templates point to WezTerm
-channels). If a merge brings it back, delete it again. Conflicts are most likely in `fancy_tab_bar.rs`, `paint.rs` and the
+The fork keeps the workspace crates in `crates/` (upstream has them at the top level), and it has dropped upstream's
+`.github`, `docs`, `ci`, `nix` and packaging files. Git follows the renames, so most upstream changes merge as they are;
+files that upstream changes and the fork deleted come back as modify/delete conflicts: delete them again. Merge with
+`git merge -X find-renames upstream/main`. Conflicts are most likely in `fancy_tab_bar.rs`, `paint.rs` and the
 Wayland window code.
 
 The tab bar font needs an explicit fallback for braille glyphs (the pult config uses DejaVu Sans / Apple Braille), otherwise
