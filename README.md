@@ -8,6 +8,22 @@ below are small and kept apart, so that upstream can be merged. It is the termin
 [pult](https://github.com/kisAsztal/pult), which provides the persistent sessions and the status; without pult it works as an
 ordinary WezTerm.
 
+![pult-term: tabs coloured by status, and a permission request waiting](docs/pult-term/waiting.png)
+
+Every tab is a persistent session, coloured by what its Claude is doing: working, waiting for permission, done, failed. A
+session that needs you pulses, and the window frame turns yellow while anything waits.
+
+| | |
+|---|---|
+| ![Working tab with a spinner](docs/pult-term/working.png) | ![The session picker over several machines](docs/pult-term/picker.png) |
+| A working session, with its spinner | `F2`: every session on every machine, those waiting for you first |
+
+The light theme follows the system setting:
+
+![Light theme](docs/pult-term/light.png)
+
+*The sessions in these screenshots are made-up demo data.*
+
 ## What it adds to WezTerm
 
 - **A status stripe on every tab**, drawn from the tab title, so the state of each session reads from across the room.
