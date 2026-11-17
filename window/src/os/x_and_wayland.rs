@@ -274,6 +274,14 @@ impl WindowOps for Window {
         }
     }
 
+    fn activate_with_token(&self, token: String) {
+        match self {
+            Self::X11(x) => x.focus(),
+            #[cfg(feature = "wayland")]
+            Self::Wayland(w) => w.activate_with_token(token),
+        }
+    }
+
     fn toggle_fullscreen(&self) {
         match self {
             Self::X11(x) => x.toggle_fullscreen(),

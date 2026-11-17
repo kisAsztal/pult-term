@@ -118,12 +118,15 @@ impl crate::TermWindow {
         // If self.has_animation is some, then the last render detected
         // image attachments with multiple frames, so we also need to
         // invalidate the viewport when the next frame is due
-        if self.focused.is_some() {
+        // pult: the tab bar animation also runs in an unfocused (but visible) window
+        if self.focused.is_some() || self.pult_anim.get().is_some() {
             if let Some(next_due) = *self.has_animation.borrow() {
                 let prior = self.scheduled_animation.borrow_mut().take();
                 match prior {
                     Some(prior) if prior <= next_due => {
                         // Already due before that time
+                        // pult: keep the timer that is already scheduled, or every paint would start a new one
+                        self.scheduled_animation.borrow_mut().replace(prior);
                     }
                     _ => {
                         self.scheduled_animation.borrow_mut().replace(next_due);
@@ -135,6 +138,9 @@ impl crate::TermWindow {
                                 tw.scheduled_animation.borrow_mut().take();
                                 if tw.tab_bar.next_progress_frame_due().is_some() {
                                     tw.update_title_post_status();
+                                }
+                                if tw.pult_anim.get().is_some() {
+                                    tw.invalidate_fancy_tab_bar();
                                 }
                                 win.invalidate();
                             })));

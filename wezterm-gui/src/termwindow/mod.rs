@@ -79,6 +79,8 @@ mod mouseevent;
 pub mod palette;
 pub mod paneselect;
 mod prevcursor;
+pub mod pult;
+pub mod pultselector;
 pub mod render;
 pub mod resize;
 mod selection;
@@ -454,6 +456,10 @@ pub struct TermWindow {
     /// if we run out of texture space
     allow_images: AllowImage,
     scheduled_animation: RefCell<Option<Instant>>,
+    /// pult: frame interval of the tab bar animation (when a tab is animated)
+    pub pult_anim: std::cell::Cell<Option<std::time::Duration>>,
+    /// pult: per-tab state of the status colour fade (see `fancy_tab_bar::pult_fade`)
+    pub pult_fade: RefCell<HashMap<usize, render::fancy_tab_bar::PultFade>>,
 
     created: Instant,
 
@@ -784,6 +790,8 @@ impl TermWindow {
             current_event: None,
             has_animation: RefCell::new(None),
             scheduled_animation: RefCell::new(None),
+            pult_anim: std::cell::Cell::new(None),
+            pult_fade: RefCell::new(HashMap::new()),
             allow_images: AllowImage::Yes,
             semantic_zones: HashMap::new(),
             ui_items: vec![],
@@ -2293,6 +2301,14 @@ impl TermWindow {
 
         let gui_win = GuiWin::new(self);
         let pane = MuxPane(pane.pane_id());
+
+        // pult: a floating panel instead of the overlay that covers the whole tab
+        if let Some(modal) =
+            crate::termwindow::pultselector::PultSelector::new(args.clone(), gui_win.clone(), pane.clone())
+        {
+            self.set_modal(Rc::new(modal));
+            return;
+        }
 
         let (overlay, future) = start_overlay(self, &tab, move |_tab_id, term| {
             crate::overlay::selector::selector(term, args, gui_win, pane)

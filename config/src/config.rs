@@ -1623,8 +1623,9 @@ impl Config {
     }
 }
 
+// pult-term: off by default. The update check looks at the upstream WezTerm releases, which are not ours.
 fn default_check_for_updates() -> bool {
-    cfg!(not(feature = "distro-defaults"))
+    false
 }
 
 fn default_pane_select_fg_color() -> RgbaColor {

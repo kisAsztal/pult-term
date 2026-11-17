@@ -30,7 +30,7 @@ pub struct ServerInformation {
     default_service = "org.freedesktop.Notifications",
     default_path = "/org/freedesktop/Notifications"
 )]
-trait Notifications {
+pub(crate) trait Notifications {
     /// Get server information.
     ///
     /// This message returns the information on the server.
@@ -59,6 +59,10 @@ trait Notifications {
 
     #[zbus(signal)]
     fn notification_closed(&self, nid: u32, reason: u32) -> zbus::Result<()>;
+
+    // pult: xdg-activation token, sent before ActionInvoked (spec 1.2)
+    #[zbus(signal)]
+    fn activation_token(&self, nid: u32, token: String) -> zbus::Result<()>;
 }
 
 /// Timeout/expiration was reached

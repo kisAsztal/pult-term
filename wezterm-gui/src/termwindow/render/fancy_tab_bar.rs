@@ -1,3 +1,4 @@
+use crate::color::LinearRgba;
 use crate::customglyph::*;
 use crate::tabbar::{TabBarItem, TabEntry};
 use crate::termwindow::box_model::*;
@@ -7,7 +8,14 @@ use crate::termwindow::render::window_buttons::window_button_element;
 use crate::termwindow::{UIItem, UIItemType};
 use crate::utilsprites::RenderMetrics;
 use config::{Dimension, DimensionContext, TabBarColors};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::LazyLock;
+use std::time::{Duration, Instant};
+use termwiz::cell::Cell;
+use termwiz::color::SrgbaTuple;
+use termwiz::surface::{Line, SEQ_ZERO};
 use wezterm_font::LoadedFont;
 use wezterm_term::color::{ColorAttribute, ColorPalette};
 use window::{IntegratedTitleButtonAlignment, IntegratedTitleButtonStyle};
@@ -94,18 +102,34 @@ impl crate::TermWindow {
             VerticalAlign::Bottom
         };
 
+        // pult: tab title animation (spinner, pulse); collects the shortest frame interval needed
+        let pult_anim = std::cell::Cell::new(None);
+        // an unfocused window pulses half as often, to use less CPU in the background
+        let pult_slow = self.focused.is_none();
         let item_to_elem = |item: &TabEntry| -> Element {
-            let element = Element::with_line(&font, &item.title, palette);
+            let animated = match item.item {
+                TabBarItem::Tab { tab_idx, .. } => {
+                    let line = pult_animate(&item.title, palette, &pult_anim, pult_slow);
+                    Some(pult_fade(&self.pult_fade, tab_idx, &item.title, line, palette, &pult_anim))
+                }
+                TabBarItem::RightStatus => Some(pult_animate(&item.title, palette, &pult_anim, pult_slow)),
+                _ => None,
+            };
+            let src = animated.as_ref().unwrap_or(&item.title);
+            let accent = match item.item {
+                TabBarItem::Tab { .. } => pult_accent(src, palette),
+                _ => None,
+            };
+            let title = accent.as_ref().map(|(l, _)| l).unwrap_or(src);
+            let element = Element::with_line(&font, title, palette);
 
-            let bg_color = item
-                .title
+            let bg_color = title
                 .get_cell(0)
                 .and_then(|c| match c.attrs().background() {
                     ColorAttribute::Default => None,
                     col => Some(palette.resolve_bg(col)),
                 });
-            let fg_color = item
-                .title
+            let fg_color = title
                 .get_cell(0)
                 .and_then(|c| match c.attrs().foreground() {
                     ColorAttribute::Default => None,
@@ -117,7 +141,7 @@ impl crate::TermWindow {
             let active_tab = colors.active_tab();
             let is_bottom = self.config.tab_bar_at_bottom;
 
-            match item.item {
+            let elem = match item.item {
                 TabBarItem::RightStatus | TabBarItem::LeftStatus | TabBarItem::None => element
                     .item_type(UIItemType::TabBar(TabBarItem::None))
                     .line_height(Some(1.75))
@@ -359,6 +383,10 @@ impl crate::TermWindow {
                     &metrics,
                     &self.config,
                 ),
+            };
+            match accent {
+                Some((_, color)) => pult_accent_elem(elem, color),
+                None => elem,
             }
         };
 
@@ -521,6 +549,7 @@ impl crate::TermWindow {
             },
         ));
 
+        self.pult_anim.set(pult_anim.get());
         Ok(computed)
     }
 
@@ -535,6 +564,209 @@ impl crate::TermWindow {
 
         Ok(ui_items)
     }
+}
+
+/// pult: shared clock of the tab title animations. Frames fall on this grid, so they stay even when the tab bar
+/// is also redrawn for other reasons.
+static PULT_EPOCH: LazyLock<Instant> = LazyLock::new(Instant::now);
+const PULT_SPIN: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const PULT_SPIN_FRAME: Duration = Duration::from_millis(100);
+const PULT_PULSE_FRAME: Duration = Duration::from_millis(33);
+const PULT_PULSE_PERIOD: f32 = 1.6;
+/// The title of a pulsing tab is `A \u{e000} B`: A and B are the same label in the colours of the two ends of the pulse.
+const PULT_PULSE_SEP: &str = "\u{e000}";
+
+/// pult: time of the next frame on the grid measured from `PULT_EPOCH`.
+pub(crate) fn pult_next_frame(interval: Duration) -> Instant {
+    let iv = interval.as_nanos();
+    let next = PULT_EPOCH.elapsed().as_nanos() / iv + 1;
+    *PULT_EPOCH + Duration::from_nanos((next * iv) as u64)
+}
+
+fn pult_need(anim: &std::cell::Cell<Option<Duration>>, iv: Duration) {
+    anim.set(Some(anim.get().map_or(iv, |cur| cur.min(iv))));
+}
+
+fn pult_lerp_color(
+    a: ColorAttribute,
+    b: ColorAttribute,
+    w: f32,
+    resolve: impl Fn(ColorAttribute) -> SrgbaTuple,
+) -> ColorAttribute {
+    if a == b || a == ColorAttribute::Default || b == ColorAttribute::Default {
+        return a;
+    }
+    let (x, y) = (resolve(a), resolve(b));
+    let l = |p: f32, q: f32| p + (q - p) * w;
+    ColorAttribute::TrueColorWithDefaultFallback(SrgbaTuple(
+        l(x.0, y.0),
+        l(x.1, y.1),
+        l(x.2, y.2),
+        l(x.3, y.3),
+    ))
+}
+
+/// pult: tab title animation without Lua, on every frame:
+/// - spinner: the braille character in the title is replaced by the current frame (10 per second);
+/// - pulse: for an `A \u{e000} B` title, a per-cell blend between the colours of A and B (sine, 1.6 s, ~30 per second).
+fn pult_animate(
+    title: &Line,
+    palette: &ColorPalette,
+    anim: &std::cell::Cell<Option<Duration>>,
+    slow: bool,
+) -> Line {
+    let mut line = title.clone();
+    let sep = line
+        .visible_cells()
+        .find(|c| c.str() == PULT_PULSE_SEP)
+        .map(|c| c.cell_index());
+    if let Some(i) = sep {
+        let mut b = line.split_off(i, SEQ_ZERO).split_off(1, SEQ_ZERO);
+        if b.len() == line.len() {
+            let t = PULT_EPOCH.elapsed().as_secs_f32() % PULT_PULSE_PERIOD / PULT_PULSE_PERIOD;
+            let w = 0.5 - 0.5 * (t * std::f32::consts::TAU).cos();
+            for (ca, cb) in line.cells_mut().iter_mut().zip(b.cells_mut().iter()) {
+                let fg = pult_lerp_color(ca.attrs().foreground(), cb.attrs().foreground(), w, |c| {
+                    palette.resolve_fg(c)
+                });
+                let bg = pult_lerp_color(ca.attrs().background(), cb.attrs().background(), w, |c| {
+                    palette.resolve_bg(c)
+                });
+                ca.attrs_mut().set_foreground(fg).set_background(bg);
+            }
+            pult_need(anim, if slow { PULT_PULSE_FRAME * 2 } else { PULT_PULSE_FRAME });
+        }
+    }
+    let frame = (PULT_EPOCH.elapsed().as_millis() / PULT_SPIN_FRAME.as_millis()) as usize;
+    let glyph = PULT_SPIN[frame % PULT_SPIN.len()];
+    for c in line.cells_mut().iter_mut() {
+        let mut chars = c.str().chars();
+        if let (Some(ch), None) = (chars.next(), chars.next()) {
+            if ('\u{2801}'..='\u{28ff}').contains(&ch) {
+                *c = Cell::new(glyph, c.attrs().clone());
+                pult_need(anim, PULT_SPIN_FRAME);
+            }
+        }
+    }
+    line
+}
+
+/// pult: on a status change (different background or stripe colour) the tab does not jump to the new colour but
+/// fades into it over `PULT_FADE`. The change is detected from the first cell of the unanimated title (the `▎`
+/// stripe: foreground = stripe, background = tab), so the pulse does not count as a change.
+const PULT_FADE: Duration = Duration::from_millis(220);
+/// Flash (done / failed): if the title contains `PULT_FLASH_MARK`, the fade starts from a background lightened with
+/// the stripe colour on the change and takes longer (a one-off signal, no repetition).
+const PULT_FLASH: Duration = Duration::from_millis(900);
+const PULT_FLASH_MARK: &str = "\u{e001}";
+const PULT_FADE_FRAME: Duration = Duration::from_millis(16);
+
+#[derive(Clone, Copy, Debug)]
+pub struct PultFade {
+    /// the target: colours (stripe, background) of the first cell of the unanimated title
+    target: (SrgbaTuple, SrgbaTuple),
+    /// where the fade starts (the colours visible at the moment of the change)
+    from: (SrgbaTuple, SrgbaTuple),
+    start: Instant,
+    dur: Duration,
+}
+
+fn pult_mix(a: SrgbaTuple, b: SrgbaTuple, w: f32) -> SrgbaTuple {
+    let l = |p: f32, q: f32| p + (q - p) * w;
+    SrgbaTuple(l(a.0, b.0), l(a.1, b.1), l(a.2, b.2), l(a.3, b.3))
+}
+
+fn pult_fade(
+    state: &RefCell<HashMap<usize, PultFade>>,
+    tab_idx: usize,
+    title: &Line,
+    mut line: Line,
+    palette: &ColorPalette,
+    anim: &std::cell::Cell<Option<Duration>>,
+) -> Line {
+    // the flash marker is always removed (stock WezTerm does not get it, and has no use for it)
+    let mark = line.visible_cells().find(|c| c.str() == PULT_FLASH_MARK).map(|c| c.cell_index());
+    if let Some(i) = mark {
+        let rest = line.split_off(i, SEQ_ZERO).split_off(1, SEQ_ZERO);
+        line.append_line(rest, SEQ_ZERO);
+    }
+    let Some(cell) = title.get_cell(0) else { return line };
+    if cell.str() != "\u{258e}" {
+        return line;
+    }
+    let target = (palette.resolve_fg(cell.attrs().foreground()), palette.resolve_bg(cell.attrs().background()));
+    let now = Instant::now();
+    let ease = |f: &PultFade| {
+        let t = (now - f.start).as_secs_f32() / f.dur.as_secs_f32();
+        if t >= 1. { 1. } else { 1. - (1. - t) * (1. - t) * (1. - t) }
+    };
+    let mut map = state.borrow_mut();
+    let fade = match map.get(&tab_idx).copied() {
+        None => {
+            map.insert(tab_idx, PultFade { target, from: target, start: now - PULT_FADE, dur: PULT_FADE });
+            return line;
+        }
+        Some(f) if f.target != target => {
+            // start from the colour currently shown (possibly halfway through a fade)
+            let w = ease(&f);
+            let shown = (pult_mix(f.from.0, f.target.0, w), pult_mix(f.from.1, f.target.1, w));
+            let f = if mark.is_some() {
+                let mut glow = target.0;
+                glow.3 = target.1 .3.max(0.85);
+                PultFade { target, from: (target.0, pult_mix(target.1, glow, 0.6)), start: now, dur: PULT_FLASH }
+            } else {
+                PultFade { target, from: shown, start: now, dur: PULT_FADE }
+            };
+            map.insert(tab_idx, f);
+            f
+        }
+        Some(f) => f,
+    };
+    let w = ease(&fade);
+    if w >= 1. {
+        return line;
+    }
+    pult_need(anim, PULT_FADE_FRAME);
+    for (i, c) in line.cells_mut().iter_mut().enumerate() {
+        let bg = pult_mix(fade.from.1, palette.resolve_bg(c.attrs().background()), w);
+        c.attrs_mut().set_background(ColorAttribute::TrueColorWithDefaultFallback(bg));
+        if i == 0 {
+            let fg = pult_mix(fade.from.0, palette.resolve_fg(c.attrs().foreground()), w);
+            c.attrs_mut().set_foreground(ColorAttribute::TrueColorWithDefaultFallback(fg));
+        }
+    }
+    line
+}
+
+/// pult: a tab title starting with `▎` carries the tab's status stripe. The character is removed and its colour
+/// becomes a thick stripe on top of the tab (see `pult_accent_elem`). Stock WezTerm shows the same title with a left stripe.
+fn pult_accent(title: &Line, palette: &ColorPalette) -> Option<(Line, LinearRgba)> {
+    let cell = title.get_cell(0)?;
+    if cell.str() != "\u{258e}" {
+        return None;
+    }
+    let color = match cell.attrs().foreground() {
+        ColorAttribute::Default => return None,
+        col => palette.resolve_fg(col).to_linear(),
+    };
+    let mut rest = title.clone();
+    Some((rest.split_off(1, SEQ_ZERO), color))
+}
+
+/// pult: a square tab with the status colour on top and a separator on the right (the inactive tab's border colour stays).
+fn pult_accent_elem(mut elem: Element, color: LinearRgba) -> Element {
+    elem.border = BoxDimension {
+        left: Dimension::Pixels(0.),
+        right: Dimension::Pixels(1.),
+        top: Dimension::Points(2.25),
+        bottom: Dimension::Pixels(0.),
+    };
+    elem.border_corners = None;
+    elem.colors.border.top = color;
+    if let Some(hover) = elem.hover_colors.as_mut() {
+        hover.border = elem.colors.border;
+    }
+    elem
 }
 
 fn make_x_button(

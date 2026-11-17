@@ -26,6 +26,9 @@ exclude = [
 [profile.release]
 opt-level = 3
 # debug = 2
+# pult-term: strip + thin LTO (binary about a third smaller, slightly longer build)
+strip = true
+lto = "thin"
 
 [profile.dev]
 # https://jakedeichert.com/blog/reducing-rust-incremental-compilation-times-on-macos-by-70-percent/

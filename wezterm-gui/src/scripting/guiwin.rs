@@ -33,6 +33,7 @@ impl GuiWin {
 
 impl UserData for GuiWin {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        crate::termwindow::pult::add_lua_methods(methods);
         methods.add_meta_method(mlua::MetaMethod::ToString, |_, this, _: ()| {
             Ok(format!(
                 "GuiWin(mux_window_id:{}, pid:{})",

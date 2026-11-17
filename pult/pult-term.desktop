@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=pult-term
+Comment=Terminal for Claude Code sessions (WezTerm fork)
+Keywords=shell;prompt;command;commandline;cmd;terminal;wezterm;pult;claude;
+Icon=pult-term
+StartupWMClass=pult-term
+TryExec=@BIN@/wezterm
+Exec=@BIN@/wezterm start --class pult-term --cwd .
+Type=Application
+Categories=System;TerminalEmulator;Utility;
+Terminal=false
+X-TerminalArgExec=--

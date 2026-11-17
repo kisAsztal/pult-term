@@ -323,6 +323,11 @@ pub trait WindowOps {
     fn restore(&self) {}
     fn focus(&self) {}
 
+    /// pult: raise the window with an xdg-activation token (e.g. from a notification); plain focus where unsupported.
+    fn activate_with_token(&self, _token: String) {
+        self.focus()
+    }
+
     fn toggle_fullscreen(&self) {}
 
     fn config_did_change(&self, _config: &config::ConfigHandle) {}

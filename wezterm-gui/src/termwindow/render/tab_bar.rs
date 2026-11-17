@@ -13,6 +13,10 @@ impl crate::TermWindow {
         // when this is the soonest pending animation and rebuilds the tab bar
         // to advance the frame.
         self.update_next_frame_time(self.tab_bar.next_progress_frame_due());
+        // pult: animated tab title (spinner, pulse): redraw on the next frame
+        if let Some(iv) = self.pult_anim.get() {
+            self.update_next_frame_time(Some(super::fancy_tab_bar::pult_next_frame(iv)));
+        }
 
         if self.config.use_fancy_tab_bar {
             if self.fancy_tab_bar.is_none() {

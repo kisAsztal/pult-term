@@ -1,3 +1,26 @@
+# pult-term
+
+A fork of [WezTerm](https://wezterm.org) for [pult](https://github.com/kisAsztal/pult), which gives
+[Claude Code](https://claude.com/claude-code) persistent sessions and a live status on every tab. The terminal itself
+is plain WezTerm; the additions are small and kept apart, so upstream can be merged:
+
+- a status stripe on top of each tab, drawn from the tab title;
+- natively animated tab titles (spinner, pulse) and smooth status colour fades, with no Lua timers;
+- floating pickers (the `InputSelector`) instead of overlays that cover the whole tab;
+- desktop notifications with buttons from Lua, and raising the window on click (Wayland xdg-activation).
+
+pult-term works without pult as an ordinary WezTerm. Details, the Lua API, build and install: [PULT-TERM.md](PULT-TERM.md).
+
+```sh
+git clone https://github.com/kisAsztal/pult-term
+cd pult-term
+pult/install.sh            # builds with cargo and installs for the current user (Linux)
+```
+
+The rest of this file is the upstream WezTerm README.
+
+---
+
 # Wez's Terminal
 
 <img height="128" alt="WezTerm Icon" src="https://raw.githubusercontent.com/wezterm/wezterm/main/assets/icon/wezterm-icon.svg" align="left"> *A GPU-accelerated cross-platform terminal emulator and multiplexer written by <a href="https://github.com/wez">@wez</a> and implemented in <a href="https://www.rust-lang.org/">Rust</a>*

@@ -44,6 +44,7 @@ use wayland_client::{Connection as WConnection, Dispatch, Proxy, QueueHandle};
 use wayland_egl::{is_available as egl_is_available, WlEglSurface};
 use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1;
 use wayland_protocols::ext::background_effect::v1::client::ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1;
+use wayland_protocols::xdg::activation::v1::client::xdg_activation_v1::XdgActivationV1;
 use wayland_protocols_plasma::blur::client::org_kde_kwin_blur::OrgKdeKwinBlur;
 use wayland_protocols_plasma::blur::client::org_kde_kwin_blur_manager::OrgKdeKwinBlurManager;
 use wezterm_font::FontConfiguration;
@@ -389,6 +390,18 @@ impl WindowOps for WaylandWindow {
             }
         })
         .await
+    }
+
+    fn activate_with_token(&self, token: String) {
+        WaylandConnection::with_window_inner(self.0, move |inner| {
+            let conn = WaylandConnection::get().unwrap().wayland();
+            let state = conn.wayland_state.borrow();
+            match &state.xdg_activation {
+                Some(activation) => activation.activate(token, inner.surface()),
+                None => log::warn!("pult: the compositor does not support xdg-activation"),
+            }
+            Ok(())
+        });
     }
 
     fn hide(&self) {
@@ -1516,6 +1529,19 @@ impl WindowHandler for WaylandState {
         _serial: u32,
     ) {
         self.handle_window_event(window, WaylandWindowEvent::Request(configure));
+    }
+}
+
+impl Dispatch<XdgActivationV1, GlobalData> for WaylandState {
+    fn event(
+        _state: &mut Self,
+        _proxy: &XdgActivationV1,
+        _event: <XdgActivationV1 as Proxy>::Event,
+        _data: &GlobalData,
+        _conn: &WConnection,
+        _qhandle: &wayland_client::QueueHandle<Self>,
+    ) {
+        // xdg_activation_v1 has no events
     }
 }
 
