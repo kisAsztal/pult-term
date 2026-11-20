@@ -4,6 +4,8 @@
 //! (`action_callback(window, pane, id, label)`, `nil` on Escape), so nothing changes on the Lua side.
 //! Typing filters; ↑/↓ (Ctrl+P/N, Ctrl+K/J) move; Enter selects; Esc / Ctrl+G / Ctrl+C cancel.
 //! In a non-fuzzy list with an empty query, 1–9 select directly.
+//! An entry whose id starts with `rm:` can be removed with Ctrl+D / Delete: the row disappears, the list stays open, and
+//! the callback gets the entry with the id `remove:<id>` (the Lua side does the actual removal).
 //! Colours come from `command_palette_bg_color` / `command_palette_fg_color` (which the Lua config sets from the
 //! theme); the font is the terminal's.
 
@@ -43,6 +45,7 @@ pub struct PultSelector {
     choices: Vec<Choice>,
     query: RefCell<String>,
     matches: RefCell<Vec<usize>>,
+    removed: RefCell<Vec<bool>>,
     selected: RefCell<usize>,
     top: RefCell<usize>,
     element: RefCell<Option<Vec<ComputedElement>>>,
@@ -94,6 +97,7 @@ impl PultSelector {
             })
             .collect::<Vec<_>>();
         let matches = (0..choices.len()).collect();
+        let removed = RefCell::new(vec![false; choices.len()]);
         Some(Self {
             args,
             event_name,
@@ -102,6 +106,7 @@ impl PultSelector {
             choices,
             query: RefCell::new(String::new()),
             matches: RefCell::new(matches),
+            removed,
             selected: RefCell::new(0),
             top: RefCell::new(0),
             element: RefCell::new(None),
@@ -110,15 +115,17 @@ impl PultSelector {
 
     fn refilter(&self) {
         let query = self.query.borrow();
+        let removed = self.removed.borrow();
         let mut matches = self.matches.borrow_mut();
         if query.is_empty() {
-            *matches = (0..self.choices.len()).collect();
+            *matches = (0..self.choices.len()).filter(|&i| !removed[i]).collect();
         } else {
             let pattern = matcher_pattern(&query);
             let mut scored: Vec<(usize, u32)> = self
                 .choices
                 .iter()
                 .enumerate()
+                .filter(|(i, _)| !removed[*i])
                 .filter_map(|(i, c)| matcher_score(&pattern, &c.text).map(|s| (i, s)))
                 .collect();
             scored.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -141,6 +148,28 @@ impl PultSelector {
         } else if *sel >= *top + MAX_ROWS {
             *top = *sel + 1 - MAX_ROWS;
         }
+    }
+
+    /// Ctrl+D / Delete: remove the selected entry if its id starts with `rm:`, and tell Lua (`remove:<id>`).
+    fn remove_selected(&self) {
+        let sel = *self.selected.borrow();
+        let Some(ci) = self.matches.borrow().get(sel).copied() else { return };
+        let entry = &self.choices[ci].entry;
+        let Some(id) = entry.id.as_deref().filter(|id| id.starts_with("rm:")) else { return };
+        self.removed.borrow_mut()[ci] = true;
+        self.matches.borrow_mut().remove(sel);
+        let n = self.matches.borrow().len();
+        *self.selected.borrow_mut() = sel.min(n.saturating_sub(1));
+        let mut top = self.top.borrow_mut();
+        *top = (*top).min(n.saturating_sub(MAX_ROWS));
+        let mut removed = entry.clone();
+        removed.id = Some(format!("remove:{id}"));
+        crate::overlay::selector::trampoline(
+            self.event_name.clone(),
+            self.window.clone(),
+            self.pane.clone(),
+            Some(removed),
+        );
     }
 
     fn finish(&self, term_window: &mut TermWindow, entry: Option<InputSelectorEntry>) {
@@ -308,6 +337,7 @@ impl Modal for PultSelector {
             }
             (KeyCode::UpArrow, _) | (KeyCode::Char('p' | 'k'), KeyModifiers::CTRL) => self.move_by(-1),
             (KeyCode::DownArrow, _) | (KeyCode::Char('n' | 'j'), KeyModifiers::CTRL) => self.move_by(1),
+            (KeyCode::Char('d'), KeyModifiers::CTRL) | (KeyCode::Delete, _) => self.remove_selected(),
             (KeyCode::PageUp, _) => self.move_by(-(MAX_ROWS as isize)),
             (KeyCode::PageDown, _) => self.move_by(MAX_ROWS as isize),
             (KeyCode::Enter, _) => {
