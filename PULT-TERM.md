@@ -1,7 +1,7 @@
 # pult-term
 
 pult-term is [WezTerm](https://wezterm.org) with a few additions for [pult](https://github.com/kisAsztal/pult). Upstream
-documentation applies to everything else. The fork follows upstream `main`: `git fetch upstream && git merge upstream/main`.
+documentation applies to everything else. The fork follows upstream `main` (see [Merging upstream](#merging-upstream)).
 
 ## What is added
 
@@ -53,14 +53,26 @@ To try it without disturbing running windows, start a separate instance with its
 
 ## Merging upstream
 
+This repository does not carry the upstream history: it starts with an `Import WezTerm at wez/wezterm@…` commit, and
+each upstream update is one squashed `Update WezTerm to wez/wezterm@…` commit, whose message holds the full upstream
+commit id. A temporary, local-only graft gives git the common ancestor for the merge:
+
 ```sh
-git fetch upstream && git merge upstream/main
+git remote add upstream https://github.com/wez/wezterm.git    # once
+git fetch upstream
+last=$(git log -1 --format=%H -E --grep='^(Import|Update) WezTerm (at|to) wez/wezterm@')
+base=$(git log -1 --format=%B "$last" | grep -oE '[0-9a-f]{40}' | head -1)
+git replace --graft "$last" $(git rev-parse -q --verify "$last^") "$base"   # local only
+git merge --squash -X find-renames upstream/main
+# resolve the conflicts, then:
+git commit -m "Update WezTerm to wez/wezterm@$(git rev-parse --short=12 upstream/main)" \
+           -m "Upstream commit $(git rev-parse upstream/main)."
+git replace -d "$last"                                         # before pushing
 ```
 
 The fork keeps the workspace crates in `crates/` (upstream has them at the top level), and it has dropped upstream's
 `.github`, `docs`, `ci`, `nix` and packaging files. Git follows the renames, so most upstream changes merge as they are;
-files that upstream changes and the fork deleted come back as modify/delete conflicts: delete them again. Merge with
-`git merge -X find-renames upstream/main`. Conflicts are most likely in `fancy_tab_bar.rs`, `paint.rs` and the
+files that upstream changes and the fork deleted come back as modify/delete conflicts: delete them again. Conflicts are most likely in `fancy_tab_bar.rs`, `paint.rs` and the
 Wayland window code.
 
 The tab bar font needs an explicit fallback for braille glyphs (the pult config uses DejaVu Sans / Apple Braille), otherwise
