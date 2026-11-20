@@ -65,6 +65,14 @@ impl crate::TermWindow {
 
     pub fn build_fancy_tab_bar(&self, palette: &ColorPalette) -> anyhow::Result<ComputedElement> {
         let tab_bar_height = self.tab_bar_pixel_height()?;
+        // pult: the native macOS buttons sit in the middle of the tab bar
+        if !self.config.tab_bar_at_bottom
+            && self.config.integrated_title_button_style == IntegratedTitleButtonStyle::MacOsNative
+        {
+            if let Some(window) = self.window.as_ref() {
+                window::WindowOps::pult_titlebar_height(window, tab_bar_height);
+            }
+        }
         let font = self.fonts.title_font()?;
         let metrics = RenderMetrics::with_font_metrics(&font.metrics());
         let items = self.tab_bar.items();

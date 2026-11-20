@@ -2,6 +2,7 @@
 # Install pult-term for the current user (Linux): release build, binaries in ~/.local/lib/pult-term, icon,
 # .desktop entry (window class: pult-term) and the `pult-term` launcher. Idempotent. A running instance is not
 # stopped; the new binary is used the next time pult-term starts.
+# On macOS: the binaries, the launcher and ~/Applications/pult-term.app; the GNOME options do nothing.
 #
 # Desktop integration (GNOME) is opt-in:
 #   --set-default   make pult-term the default terminal (gsettings, xdg-terminals.list, a custom terminal shortcut)
@@ -24,13 +25,40 @@ for arg in "$@"; do
     --dock) dock=1 ;;
     --blur) blur=1 ;;
     --uninstall) uninstall=1 ;;
-    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
 
+APP=$HOME/Applications/pult-term.app
+
+# macOS: an app bundle with the pult-term icon, from the binaries in $BIN
+install_app() {
+  local tmp
+  tmp=$(mktemp -d)
+  rm -rf "$APP"
+  mkdir -p "$(dirname "$APP")"
+  cp -R assets/macos/WezTerm.app "$APP"
+  mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks"
+  mv "$APP"/*.dylib "$APP/Contents/Frameworks/"
+  cp "$BIN/wezterm" "$BIN/wezterm-gui" "$APP/Contents/MacOS/"
+  for key in CFBundleName CFBundleDisplayName; do
+    /usr/libexec/PlistBuddy -c "Set :$key pult-term" "$APP/Contents/Info.plist"
+  done
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier io.github.kisasztal.pult-term" "$APP/Contents/Info.plist"
+  mkdir "$tmp/pult-term.iconset"
+  sips -s format png -z 1024 1024 pult/pult-term.svg --out "$tmp/icon.png" >/dev/null
+  for size in 16 32 128 256 512; do
+    sips -z $size $size "$tmp/icon.png" --out "$tmp/pult-term.iconset/icon_${size}x${size}.png" >/dev/null
+    sips -z $((size * 2)) $((size * 2)) "$tmp/icon.png" --out "$tmp/pult-term.iconset/icon_${size}x${size}@2x.png" >/dev/null
+  done
+  iconutil -c icns "$tmp/pult-term.iconset" -o "$APP/Contents/Resources/terminal.icns"
+  rm -rf "$tmp"
+  codesign --force --deep -s - "$APP" 2>/dev/null
+}
+
 if [ "$uninstall" = 1 ]; then
-  rm -rf "$BIN"
+  rm -rf "$BIN" "$APP"
   rm -f ~/.local/bin/pult-term ~/.local/share/applications/pult-term.desktop \
         ~/.local/share/icons/hicolor/scalable/apps/pult-term.svg
   update-desktop-database -q ~/.local/share/applications 2>/dev/null || true
@@ -41,12 +69,20 @@ fi
 # no wezterm-mux-server: the sessions live in pultd
 [ "$build" = 0 ] || cargo build --release -p wezterm-gui -p wezterm
 
-mkdir -p "$BIN" ~/.local/bin ~/.local/share/applications ~/.local/share/icons/hicolor/scalable/apps
+mkdir -p "$BIN" ~/.local/bin
 for b in wezterm wezterm-gui; do
   # copy and rename, so a running instance keeps its old binary
   install -m755 "target/release/$b" "$BIN/$b.new" && mv -f "$BIN/$b.new" "$BIN/$b"
 done
 install -m755 pult/pult-term.sh ~/.local/bin/pult-term
+
+if [ "$(uname)" = Darwin ]; then
+  install_app
+  echo "installed: $APP ($("$BIN/wezterm" --version))"
+  exit 0
+fi
+
+mkdir -p ~/.local/share/applications ~/.local/share/icons/hicolor/scalable/apps
 install -m644 pult/pult-term.svg ~/.local/share/icons/hicolor/scalable/apps/pult-term.svg
 sed "s#@BIN@#$BIN#g" pult/pult-term.desktop > ~/.local/share/applications/pult-term.desktop
 update-desktop-database -q ~/.local/share/applications 2>/dev/null || true

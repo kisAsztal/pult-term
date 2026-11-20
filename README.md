@@ -53,7 +53,8 @@ pult/install.sh --set-default --dock    # optional: default terminal, dock favou
 You need Rust and WezTerm's build dependencies (`./get-deps`). To get the tab colours, persistent sessions and the pickers,
 also install [pult](https://github.com/kisAsztal/pult); its installer links the WezTerm config that pult-term uses.
 
-macOS and Windows are not built or tested by this fork.
+On macOS the same script builds and installs `~/Applications/pult-term.app` (needs Rust and the Xcode command line
+tools). Windows is not built or tested by this fork.
 
 ## Relationship to WezTerm
 

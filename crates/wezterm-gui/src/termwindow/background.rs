@@ -393,6 +393,19 @@ pub fn reload_background_image(
     result
 }
 
+/// pult: show the image at `path` in the first file layer, without a config reload
+pub fn pult_swap_background_image(layers: &mut [LoadedBackgroundLayer], path: &str) {
+    for layer in layers.iter_mut() {
+        if let BackgroundSource::File(source) = &layer.def.source {
+            match CachedImage::load(path, source.speed) {
+                Ok(image) => layer.source = image,
+                Err(err) => log::error!("pult_background: {:#}", err),
+            }
+            return;
+        }
+    }
+}
+
 impl crate::TermWindow {
     pub fn render_backgrounds(
         &self,

@@ -5,11 +5,13 @@
 //!                      actions = { { 'default', '' }, { 'open', 'Open' } }, timeout = 0 }
 //! window:pult_notify_close('pane-12')
 //! wezterm.on('pult-notification-action', function(window, tag, action) … end)
+//! window:pult_background('/path/to/image.png')   -- swap the background image without a config reload
 //! ```
 //! On a click the window is raised (on Wayland with the notification's xdg-activation token; not for buttons whose
 //! id starts with `bg-`), then the event runs.
 
 use crate::scripting::guiwin::GuiWin;
+use crate::termwindow::background::{pult_swap_background_image, reload_background_image};
 use crate::termwindow::{TermWindow, TermWindowNotif};
 use mlua::UserDataMethods;
 use wezterm_toast_notification::pult::{self as notif, ActionNotification};
@@ -57,9 +59,36 @@ pub fn add_lua_methods<'lua, M: UserDataMethods<'lua, GuiWin>>(methods: &mut M) 
         notif::close(tag);
         Ok(())
     });
+    // the image of the first file layer of `background`; nil returns to the configured one
+    methods.add_method("pult_background", |_, this, path: Option<String>| {
+        this.window.notify(TermWindowNotif::Apply(Box::new(move |tw: &mut TermWindow| {
+            if tw.pult_background != path {
+                tw.pult_background = path;
+                if tw.pult_background.is_none() {
+                    tw.window_background = reload_background_image(
+                        &tw.config,
+                        &tw.window_background,
+                        &tw.dimensions,
+                        &tw.render_metrics,
+                    );
+                }
+                tw.pult_apply_background();
+                if let Some(w) = tw.window.as_ref() {
+                    w.invalidate();
+                }
+            }
+        })));
+        Ok(())
+    });
 }
 
 impl TermWindow {
+    pub(super) fn pult_apply_background(&mut self) {
+        if let Some(path) = &self.pult_background {
+            pult_swap_background_image(&mut self.window_background, path);
+        }
+    }
+
     fn pult_emit_notification_action(&mut self, tag: String, action: String) {
         let window = GuiWin::new(self);
         promise::spawn::spawn(config::with_lua_config_on_main_thread(move |lua| async move {
