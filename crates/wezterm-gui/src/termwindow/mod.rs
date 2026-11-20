@@ -414,6 +414,8 @@ pub struct TermWindow {
     semantic_zones: HashMap<PaneId, SemanticZoneCache>,
 
     window_background: Vec<LoadedBackgroundLayer>,
+    // pult: image set by window:pult_background(), shown instead of the configured one
+    pult_background: Option<String>,
 
     current_modifier_and_leds: (Modifiers, KeyboardLedStatus),
     current_mouse_buttons: Vec<MousePress>,
@@ -700,6 +702,7 @@ impl TermWindow {
             webgpu: None,
             window: None,
             window_background,
+            pult_background: None,
             config: config.clone(),
             config_overrides: wezterm_dynamic::Value::default(),
             palette: None,
@@ -1845,6 +1848,8 @@ impl TermWindow {
             &self.dimensions,
             &self.render_metrics,
         );
+        // pult: keep the image chosen from Lua
+        self.pult_apply_background();
 
         self.invalidate_modal();
         self.emit_window_event("window-config-reloaded", None);

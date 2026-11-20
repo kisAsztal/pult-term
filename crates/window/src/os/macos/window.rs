@@ -507,6 +507,7 @@ impl Window {
                 invalidated: true,
                 gl_context_pair: None,
                 text_cursor_position: Rect::new(Point::new(0, 0), Size::new(0, 0)),
+                pult_titlebar_height: None,
                 tracking_rect_tag: 0,
                 hscroll_remainder: 0.,
                 vscroll_remainder: 0.,
@@ -798,6 +799,13 @@ impl WindowOps for Window {
         let title = title.to_owned();
         Connection::with_window_inner(self.id, move |inner| {
             inner.set_title(&title);
+            Ok(())
+        });
+    }
+
+    fn pult_titlebar_height(&self, pixels: f32) {
+        Connection::with_window_inner(self.id, move |inner| {
+            inner.pult_titlebar_height(pixels);
             Ok(())
         });
     }
@@ -1312,6 +1320,16 @@ impl WindowInner {
         }
     }
 
+    fn pult_titlebar_height(&mut self, pixels: f32) {
+        let height = pixels as f64 / unsafe { NSWindow::backingScaleFactor(*self.window) };
+        if let Some(window_view) = WindowView::get_this(unsafe { &**self.view }) {
+            window_view.inner.borrow_mut().pult_titlebar_height = Some(height);
+        }
+        if !self.is_fullscreen() {
+            unsafe { pult_center_titlebar_buttons(*self.window, height) };
+        }
+    }
+
     fn set_window_level(&mut self, level: WindowLevel) {
         unsafe {
             NSWindow::setLevel_(*self.window, window_level_to_nswindow_level(level));
@@ -1549,6 +1567,37 @@ unsafe fn get_view_class_name(id: id) -> Option<String> {
     }
 }
 
+/// pult: the titlebar container gets the height of the bar, and the buttons sit in its middle. AppKit lays the
+/// titlebar out again on every resize, so this is repeated from `did_resize`.
+unsafe fn pult_center_titlebar_buttons(window: id, bar_height: f64) {
+    let close = window.standardWindowButton_(appkit::NSWindowButton::NSWindowCloseButton);
+    if close.is_null() {
+        return;
+    }
+    let titlebar: id = msg_send![close, superview];
+    let container: id = msg_send![titlebar, superview];
+    if container.is_null() {
+        return;
+    }
+    let button_height = NSView::frame(close).size.height;
+    let height = bar_height.max(button_height);
+    let window_size = NSWindow::frame(window).size;
+    let frame = NSRect::new(
+        NSPoint::new(0., window_size.height - height),
+        NSSize::new(window_size.width, height),
+    );
+    let () = msg_send![container, setFrame: frame];
+    for button in &[
+        appkit::NSWindowButton::NSWindowCloseButton,
+        appkit::NSWindowButton::NSWindowMiniaturizeButton,
+        appkit::NSWindowButton::NSWindowZoomButton,
+    ] {
+        let button = window.standardWindowButton_(*button);
+        let origin = NSPoint::new(NSView::frame(button).origin.x, (height - button_height) / 2.);
+        let () = msg_send![button, setFrameOrigin: origin];
+    }
+}
+
 fn get_titlebar_view_container(window: &StrongPtr) -> Option<WeakPtr> {
     // The view container for the titlebar on macos is found next to the primary window view
     // so we need to traverse up to the super view to find it
@@ -1614,6 +1663,8 @@ struct Inner {
     invalidated: bool,
     gl_context_pair: Option<GlContextPair>,
     text_cursor_position: Rect,
+    // pult: height (points) of the bar the titlebar buttons are centred on
+    pult_titlebar_height: Option<f64>,
     tracking_rect_tag: NSInteger,
     hscroll_remainder: f64,
     vscroll_remainder: f64,
@@ -3010,6 +3061,13 @@ impl WindowView {
                     let style_mask = unsafe { NSWindow::styleMask(*window) };
                     style_mask.contains(NSWindowStyleMask::NSFullScreenWindowMask)
                 });
+
+            // pult: keep the titlebar buttons centred on the tab bar
+            if let (false, Some(height), Some(window)) =
+                (is_full_screen, inner.pult_titlebar_height, inner.window.as_ref())
+            {
+                unsafe { pult_center_titlebar_buttons(*window.load(), height) };
+            }
 
             let live_resizing = inner.live_resizing;
 

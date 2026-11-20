@@ -12,6 +12,8 @@ documentation applies to everything else. The fork follows upstream `main` (see 
 | Status colour fade | same file (`pult_fade`) | The tab background and stripe fade into the new colour over ~220 ms. A title containing `\u{e001}` flashes once on change (done / failed). |
 | Floating pickers | `crates/wezterm-gui/src/termwindow/pultselector.rs` | Every `InputSelector` with an `action_callback` becomes a floating panel under the tab bar. Same event back to Lua. Typing filters; ↑↓ / Ctrl+P/N, PgUp/PgDn, Enter, Esc; in a non-fuzzy list 1–9 select. Ctrl+D / Delete on an entry whose id starts with `rm:` removes the row, keeps the list open and sends the id `remove:<id>`. Colours: `command_palette_bg_color` / `_fg_color`. No mouse support yet. |
 | Notifications with buttons | `crates/wezterm-toast-notification/src/pult.rs`, `crates/wezterm-gui/src/termwindow/pult.rs` | Linux (D-Bus) only; macOS and Windows get a plain notification. |
+| Background swap | `crates/wezterm-gui/src/termwindow/pult.rs`, `background.rs` (`pult_swap_background_image`) | `window:pult_background(path)` puts another image into the first file layer of `background` without a config reload (an override reloads the whole config on every tab switch). |
+| Native buttons centred (macOS) | `crates/window/src/os/macos/window.rs` (`pult_center_titlebar_buttons`) | With `integrated_title_button_style = 'MacOsNative'` the close / minimise / zoom buttons sit in the middle of the tab bar, at any font size (`WindowOps::pult_titlebar_height`). |
 | Raise on click (Wayland) | `crates/window/src/os/wayland/` | `WindowOps::activate_with_token` with xdg-activation. GNOME 46 does not send the token; the window is then focused plainly. |
 | Update check off by default | `crates/config/src/config.rs` | The upstream check looks at the WezTerm releases. |
 | Release profile | `Cargo.toml` | `strip` + thin LTO: a smaller binary, a somewhat longer build. |
@@ -29,6 +31,7 @@ window:pult_notify {
   timeout = 0,                          -- ms, 0 = until closed
 }
 window:pult_notify_close('pane-12')
+window:pult_background('/path/bg-3.png') -- nil: back to the configured image
 
 wezterm.on('pult-notification-action', function(window, tag, action) end)
 ```
@@ -46,7 +49,8 @@ pult/install.sh --no-build                           # install an existing targe
 pult/install.sh --uninstall
 ```
 
-Linux build dependencies are those of WezTerm: see `get-deps`. macOS and Windows are not built or tested by this fork.
+Linux build dependencies are those of WezTerm: see `get-deps`. On macOS `pult/install.sh` installs
+`~/Applications/pult-term.app`; Windows is not built or tested by this fork.
 
 To try it without disturbing running windows, start a separate instance with its own window class:
 `target/release/wezterm start --always-new-process --class pult-restore-test`.

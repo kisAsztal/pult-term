@@ -328,6 +328,9 @@ pub trait WindowOps {
         self.focus()
     }
 
+    /// pult: centre the native titlebar buttons on a bar of this height in pixels (macOS; e.g. the tab bar).
+    fn pult_titlebar_height(&self, _pixels: f32) {}
+
     fn toggle_fullscreen(&self) {}
 
     fn config_did_change(&self, _config: &config::ConfigHandle) {}
